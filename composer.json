@@ -1,0 +1,40 @@
+{
+    "name": "transindus/laravel-sqlite-ffi",
+    "description": "Drop-in SQLite driver for Laravel using PHP FFI — no pdo_sqlite or sqlite3 extension required. Zero code changes needed.",
+    "type": "library",
+    "license": "MIT",
+    "keywords": ["laravel", "sqlite", "ffi", "database", "pdo", "driver", "drop-in"],
+    "authors": [
+        {
+            "name": "Dhruv Mishra",
+            "email": "er.dhruvmishra@gmail.com"
+        }
+    ],
+    "homepage": "https://github.com/er-dhruvmishra/laravel-sqlite-ffi",
+    "support": {
+        "issues": "https://github.com/er-dhruvmishra/laravel-sqlite-ffi/issues",
+        "source": "https://github.com/er-dhruvmishra/laravel-sqlite-ffi"
+    },
+    "require": {
+        "php": "^8.1",
+        "ext-ffi": "*",
+        "illuminate/database": "^10.0|^11.0|^12.0",
+        "illuminate/support": "^10.0|^11.0|^12.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "TransIndus\\SqliteFFI\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "TransIndus\\SqliteFFI\\SqliteFFIServiceProvider"
+            ]
+        }
+    },
+    "config": {
+        "sort-packages": true
+    },
+    "minimum-stability": "stable"
+}
