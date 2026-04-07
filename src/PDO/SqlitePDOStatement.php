@@ -1,12 +1,12 @@
 <?php
 
-namespace TransIndus\SqliteFFI\PDO;
+namespace ErDhruvMishra\SqliteFFI\PDO;
 
 use FFI;
 use PDO;
 use PDOException;
 use PDOStatement;
-use TransIndus\SqliteFFI\FFI\SqliteLibrary;
+use ErDhruvMishra\SqliteFFI\FFI\SqliteLibrary;
 
 /**
  * FFI-backed replacement for PDOStatement (SQLite).

@@ -1,6 +1,6 @@
 <?php
 
-namespace TransIndus\SqliteFFI\FFI;
+namespace ErDhruvMishra\SqliteFFI\FFI;
 
 use FFI;
 use RuntimeException;

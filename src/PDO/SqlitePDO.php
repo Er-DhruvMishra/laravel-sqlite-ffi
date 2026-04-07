@@ -1,11 +1,11 @@
 <?php
 
-namespace TransIndus\SqliteFFI\PDO;
+namespace ErDhruvMishra\SqliteFFI\PDO;
 
 use FFI;
 use PDO;
 use PDOException;
-use TransIndus\SqliteFFI\FFI\SqliteLibrary;
+use ErDhruvMishra\SqliteFFI\FFI\SqliteLibrary;
 
 /**
  * Drop-in replacement for PDO with the sqlite driver, powered by FFI.

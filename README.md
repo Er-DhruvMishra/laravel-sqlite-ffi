@@ -26,7 +26,7 @@ Some hosting environments or custom PHP builds don't include the `pdo_sqlite` ex
 ### 1. Install the package
 
 ```bash
-composer require transindus/laravel-sqlite-ffi
+composer require er-dhruvmishra/laravel-sqlite-ffi
 ```
 
 Laravel auto-discovers the service provider. No manual registration needed.

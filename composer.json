@@ -1,5 +1,5 @@
 {
-    "name": "transindus/laravel-sqlite-ffi",
+    "name": "er-dhruvmishra/laravel-sqlite-ffi",
     "description": "Drop-in SQLite driver for Laravel using PHP FFI — no pdo_sqlite or sqlite3 extension required. Zero code changes needed.",
     "type": "library",
     "license": "MIT",
@@ -10,10 +10,10 @@
             "email": "er.dhruvmishra@gmail.com"
         }
     ],
-    "homepage": "https://github.com/er-dhruvmishra/laravel-sqlite-ffi",
+    "homepage": "https://github.com/erdhruvmishra/laravel-sqlite-ffi",
     "support": {
-        "issues": "https://github.com/er-dhruvmishra/laravel-sqlite-ffi/issues",
-        "source": "https://github.com/er-dhruvmishra/laravel-sqlite-ffi"
+        "issues": "https://github.com/erdhruvmishra/laravel-sqlite-ffi/issues",
+        "source": "https://github.com/erdhruvmishra/laravel-sqlite-ffi"
     },
     "require": {
         "php": "^8.1",
@@ -23,13 +23,13 @@
     },
     "autoload": {
         "psr-4": {
-            "TransIndus\\SqliteFFI\\": "src/"
+            "ErDhruvMishra\\SqliteFFI\\": "src/"
         }
     },
     "extra": {
         "laravel": {
             "providers": [
-                "TransIndus\\SqliteFFI\\SqliteFFIServiceProvider"
+                "ErDhruvMishra\\SqliteFFI\\SqliteFFIServiceProvider"
             ]
         }
     },

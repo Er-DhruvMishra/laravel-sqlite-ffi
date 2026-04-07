@@ -1,12 +1,12 @@
 <?php
 
-namespace TransIndus\SqliteFFI;
+namespace ErDhruvMishra\SqliteFFI;
 
 use Illuminate\Database\Connection;
 use Illuminate\Database\SQLiteConnection;
 use Illuminate\Support\ServiceProvider;
 use PDO;
-use TransIndus\SqliteFFI\PDO\SqlitePDO;
+use ErDhruvMishra\SqliteFFI\PDO\SqlitePDO;
 
 /**
  * Auto-discovered service provider that replaces the built-in 'sqlite' driver
