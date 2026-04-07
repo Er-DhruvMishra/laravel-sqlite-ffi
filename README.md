@@ -1,15 +1,24 @@
 # Laravel SQLite FFI
 
-A **drop-in replacement** for Laravel's SQLite database driver that uses PHP FFI to call `libsqlite3` directly. No `pdo_sqlite` or `sqlite3` PHP extensions required.
+A **drop-in replacement** for Laravel's SQLite database driver with a 3-tier fallback chain. Works even when `pdo_sqlite` and FFI are both unavailable.
 
 **Zero code changes needed** — install via Composer and your existing `'driver' => 'sqlite'` configuration works immediately.
 
 ## Why?
 
-Some hosting environments or custom PHP builds don't include the `pdo_sqlite` extension. This package provides the same SQLite functionality by calling the system's `libsqlite3` shared library through PHP's FFI (Foreign Function Interface).
+Some hosting environments or custom PHP builds don't include the `pdo_sqlite` extension. This package provides the same SQLite functionality through multiple backends:
+
+| Tier | Backend | Speed | Requires |
+|------|---------|-------|----------|
+| 1 | Native `pdo_sqlite` | Fastest | PHP extension |
+| 2 | FFI (`libsqlite3`) | Near-native | ext-ffi + `ffi.enable=true` |
+| 3 | `sqlite3` CLI binary | Slower (IPC) | Binary on system or auto-downloaded |
+
+The package auto-detects the best available backend. The CLI tier **auto-downloads** `sqlite3` from sqlite.org on first use if not found on the system.
 
 - Works with Laravel 10, 11, and 12
 - Supports migrations, Eloquent, Query Builder, Schema Builder, transactions, cursors
+- Cross-platform: Linux, macOS, Windows
 - Same behavior as the native driver — your application code doesn't change
 
 ## Requirements
@@ -17,9 +26,11 @@ Some hosting environments or custom PHP builds don't include the `pdo_sqlite` ex
 | Requirement | Details |
 |-------------|---------|
 | PHP | >= 8.1 |
-| FFI extension | `extension=ffi.so` with `ffi.enable=true` |
-| libsqlite3 | System library (`libsqlite3-0` or equivalent) |
 | Laravel | 10.x / 11.x / 12.x |
+| **At least one of:** | |
+| pdo_sqlite | PHP extension (Tier 1, best performance) |
+| ext-ffi + libsqlite3 | FFI extension with `ffi.enable=true` (Tier 2) |
+| sqlite3 binary | System binary or auto-downloaded (Tier 3) |
 
 ## Installation
 
@@ -31,35 +42,7 @@ composer require er-dhruvmishra/laravel-sqlite-ffi
 
 Laravel auto-discovers the service provider. No manual registration needed.
 
-### 2. Enable PHP FFI
-
-Make sure the FFI extension is enabled and allowed to run:
-
-```ini
-; /etc/php/8.x/cli/conf.d/20-ffi.ini  (and fpm equivalent)
-extension=ffi.so
-ffi.enable=true
-```
-
-### 3. Disable native SQLite extensions (optional)
-
-If you want to fully replace the native driver, comment out these extensions:
-
-```ini
-; /etc/php/8.x/cli/conf.d/20-pdo_sqlite.ini
-; extension=pdo_sqlite.so
-
-; /etc/php/8.x/cli/conf.d/20-sqlite3.ini
-; extension=sqlite3.so
-```
-
-Then restart PHP-FPM:
-
-```bash
-sudo systemctl restart php8.x-fpm
-```
-
-### 4. Use it
+### 2. Use it
 
 No changes to your code or config. The standard Laravel SQLite configuration works as-is:
 
@@ -73,6 +56,25 @@ No changes to your code or config. The standard Laravel SQLite configuration wor
 ],
 ```
 
+The package automatically picks the best available backend.
+
+### 3. Optional: Enable specific backends
+
+**For FFI (Tier 2):**
+```ini
+; /etc/php/8.x/cli/conf.d/20-ffi.ini
+extension=ffi.so
+ffi.enable=true
+```
+
+**For CLI (Tier 3):**
+```bash
+# Install sqlite3 binary (or let the package auto-download it)
+sudo apt install sqlite3        # Debian/Ubuntu
+sudo yum install sqlite         # RHEL/CentOS
+brew install sqlite             # macOS
+```
+
 ## How It Works
 
 ```
@@ -80,21 +82,117 @@ Your Laravel App
        |
   'driver' => 'sqlite'
        |
-  [SqliteFFIServiceProvider]  ← auto-discovered, registers via Connection::resolverFor()
+  [SqliteFFIServiceProvider]       ← auto-discovered
        |
-  [SqlitePDO extends \PDO]   ← replaces native PDO SQLite driver
+  [PdoFactory]                     ← picks best available backend
        |
-  [PHP FFI]                   ← calls libsqlite3.so directly
-       |
-  [libsqlite3]                ← system SQLite library
+  ┌────┴────────────┬──────────────────┐
+  │                 │                  │
+Tier 1           Tier 2             Tier 3
+native PDO    SqlitePDO(FFI)    SqliteCliPDO
+  │                 │                  │
+pdo_sqlite     libsqlite3.so     sqlite3 binary
+extension      via PHP FFI       via proc_open
 ```
 
-The package:
+## Backend Priority Configuration
 
-1. Registers a connection resolver for the `sqlite` driver via `Connection::resolverFor()`
-2. When Laravel creates a SQLite connection, our resolver provides an FFI-backed PDO instance
-3. `SqlitePDO` extends `\PDO` and `SqlitePDOStatement` extends `\PDOStatement`, satisfying all type hints
-4. All SQLite operations go through FFI to the system's `libsqlite3` shared library
+By default, the fallback order is: **native → ffi → cli**
+
+You can customize this in three ways:
+
+### Force a specific backend
+
+In `config/database.php`:
+```php
+'sqlite' => [
+    'driver' => 'sqlite',
+    'database' => database_path('database.sqlite'),
+    'sqlite_backend' => 'ffi',   // 'native', 'ffi', or 'cli'
+],
+```
+
+Or via environment variable:
+```bash
+SQLITE_BACKEND=ffi
+```
+
+### Custom fallback order
+
+In `config/database.php`:
+```php
+'sqlite' => [
+    'driver' => 'sqlite',
+    'database' => database_path('database.sqlite'),
+    'sqlite_priority' => ['cli', 'ffi', 'native'],  // try CLI first
+],
+```
+
+Or via environment variable:
+```bash
+SQLITE_PRIORITY=cli,ffi,native
+```
+
+### Set default priority in code
+
+```php
+use ErDhruvMishra\SqliteFFI\PdoFactory;
+
+// In a service provider's register() method:
+PdoFactory::setDefaultPriority(['ffi', 'cli', 'native']);
+```
+
+### Check which backend is active
+
+```php
+use ErDhruvMishra\SqliteFFI\PdoFactory;
+
+echo PdoFactory::activeTier();  // 'native', 'ffi', 'cli', or 'none'
+```
+
+## TNTSearch Compatibility
+
+If you use [teamtnt/tntsearch](https://github.com/teamtnt/tntsearch), it calls `new PDO('sqlite:...')` directly which fails without `pdo_sqlite`. This package includes a drop-in engine replacement:
+
+```php
+$tnt->loadConfig([
+    'driver'   => 'mysql',
+    'host'     => config('database.connections.mysql.host'),
+    'database' => config('database.connections.mysql.database'),
+    'username' => config('database.connections.mysql.username'),
+    'password' => config('database.connections.mysql.password'),
+    'storage'  => storage_path('tnt_indices') . '/',
+    'engine'   => \ErDhruvMishra\SqliteFFI\Compat\TntSearchEngine::class,
+]);
+```
+
+The `TntSearchEngine` uses the same 3-tier fallback as the main driver.
+
+## Configuration Options
+
+All standard Laravel SQLite config options are supported, plus:
+
+```php
+'sqlite' => [
+    'driver' => 'sqlite',
+    'database' => database_path('database.sqlite'),
+    'prefix' => '',
+    'foreign_key_constraints' => true,        // PRAGMA foreign_keys = ON
+    'journal_mode' => 'wal',                  // PRAGMA journal_mode = wal
+    'busy_timeout' => 5000,                   // PRAGMA busy_timeout (ms)
+    'sqlite_backend' => null,                 // Force: 'native', 'ffi', 'cli'
+    'sqlite_priority' => null,                // Custom order: ['ffi', 'cli']
+],
+```
+
+### Environment variables
+
+| Variable | Description | Example |
+|----------|-------------|---------|
+| `SQLITE_BACKEND` | Force a specific backend | `ffi` |
+| `SQLITE_PRIORITY` | Custom fallback order (comma-separated) | `cli,ffi,native` |
+| `SQLITE_FFI_LIBRARY_PATH` | Custom path to `libsqlite3.so` | `/opt/lib/libsqlite3.so` |
+| `SQLITE3_BINARY_PATH` | Custom path to `sqlite3` binary | `/opt/bin/sqlite3` |
 
 ## Supported Features
 
@@ -107,62 +205,56 @@ The package:
 - **Cursors** — memory-efficient iteration via generators
 - **NULL handling** — proper NULL value support
 - **BLOB support** — binary data storage
-- **Foreign key constraints** — via `foreign_key_constraints` config option
-- **WAL mode** — via `journal_mode` config option
-- **Busy timeout** — via `busy_timeout` config option
-
-## Configuration Options
-
-All standard Laravel SQLite config options are supported, plus:
-
-```php
-'sqlite' => [
-    'driver' => 'sqlite',
-    'database' => database_path('database.sqlite'),
-    'prefix' => '',
-    'foreign_key_constraints' => true,   // PRAGMA foreign_keys = ON
-    'journal_mode' => 'wal',             // PRAGMA journal_mode = wal
-    'busy_timeout' => 5000,              // milliseconds
-],
-```
-
-### Custom libsqlite3 path
-
-If `libsqlite3` is in a non-standard location, set the environment variable:
-
-```bash
-SQLITE_FFI_LIBRARY_PATH=/custom/path/libsqlite3.so
-```
+- **Foreign key constraints** — via `foreign_key_constraints` config
+- **WAL mode** — via `journal_mode` config
+- **Busy timeout** — via `busy_timeout` config
 
 ## Compatibility
 
-| Feature | Status |
-|---------|--------|
-| `DB::connection('sqlite')` | Supported |
-| `Schema::create()` / `drop()` | Supported |
-| `DB::table()->get()` / `insert()` / `update()` / `delete()` | Supported |
-| Eloquent models with `$connection = 'sqlite'` | Supported |
-| `DB::transaction(function() { ... })` | Supported |
-| `DB::select()` / `DB::statement()` | Supported |
-| `php artisan migrate --database=sqlite` | Supported |
-| `php artisan migrate:fresh` | Supported |
-| Multiple SQLite connections | Supported |
-| In-memory databases (`:memory:`) | Supported |
-| `PDO::lastInsertId()` | Supported |
-| `PDO::quote()` | Supported |
+| Feature | Native | FFI | CLI |
+|---------|--------|-----|-----|
+| `DB::connection('sqlite')` | Yes | Yes | Yes |
+| `Schema::create()` / `drop()` | Yes | Yes | Yes |
+| Query Builder CRUD | Yes | Yes | Yes |
+| Eloquent models | Yes | Yes | Yes |
+| Transactions + rollback | Yes | Yes | Yes |
+| `php artisan migrate` | Yes | Yes | Yes |
+| Multiple connections | Yes | Yes | Yes |
+| In-memory (`:memory:`) | Yes | Yes | Yes |
+| `lastInsertId()` | Yes | Yes | Yes |
+| Server-side prepared statements | Yes | Yes | No* |
+| TNTSearch indexing | Yes | Yes | Yes |
+
+\* CLI tier uses client-side parameter escaping (safe, but slightly different execution model).
 
 ## Troubleshooting
 
-### "FFI extension is required but not loaded"
+### "No SQLite backend available"
 
-Enable the FFI extension in your PHP configuration:
+At least one backend must be available. Check:
 
 ```bash
-# Check if FFI is loaded
-php -m | grep FFI
+# Check what's available
+php -r "
+echo 'pdo_sqlite: ' . (extension_loaded('pdo_sqlite') ? 'YES' : 'no') . PHP_EOL;
+echo 'FFI: ' . (extension_loaded('FFI') ? 'YES' : 'no') . PHP_EOL;
+echo 'ffi.enable: ' . ini_get('ffi.enable') . PHP_EOL;
+echo 'sqlite3 CLI: '; exec('which sqlite3 2>/dev/null', \$o, \$c); echo \$c === 0 ? 'YES' : 'no'; echo PHP_EOL;
+"
+```
 
-# If not, enable it
-sudo phpenmod ffi
+### "FFI API is restricted by ffi.enable"
+
+FFI is loaded but `ffi.enable` is set to `preload` (default) instead of `true`:
+
+```ini
+; Change from preload to true
+ffi.enable=true
+```
+
+Restart PHP-FPM after changing:
+```bash
+sudo systemctl restart php8.x-fpm
 ```
 
 ### "libsqlite3 shared library not found"
@@ -171,26 +263,28 @@ Install the SQLite3 library:
 
 ```bash
 # Debian/Ubuntu
-sudo apt-get install libsqlite3-0
+sudo apt install libsqlite3-0
 
 # RHEL/CentOS
 sudo yum install sqlite-libs
 
-# macOS (via Homebrew)
+# macOS
 brew install sqlite
 ```
 
-### "ffi.enable must be set to true"
+### "sqlite3 binary not found"
 
-Edit your PHP configuration:
+For CLI tier, install sqlite3 or let the package auto-download it:
 
-```ini
-; Find the FFI config file
-php --ini | grep ffi
+```bash
+# Debian/Ubuntu
+sudo apt install sqlite3
 
-; Set ffi.enable=true
-ffi.enable=true
+# Or set a custom path
+export SQLITE3_BINARY_PATH=/path/to/sqlite3
 ```
+
+The package will also auto-download from sqlite.org on first use if the `bin/` directory is writable.
 
 ## License
 

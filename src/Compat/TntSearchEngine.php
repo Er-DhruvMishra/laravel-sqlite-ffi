@@ -2,21 +2,30 @@
 
 namespace ErDhruvMishra\SqliteFFI\Compat;
 
-use ErDhruvMishra\SqliteFFI\PDO\SqlitePDO;
+use ErDhruvMishra\SqliteFFI\PdoFactory;
 use PDO;
 use TeamTNT\TNTSearch\Engines\SqliteEngine;
 use TeamTNT\TNTSearch\Stemmer\NoStemmer;
 use TeamTNT\TNTSearch\Support\Tokenizer;
 
 /**
- * Drop-in replacement for TNTSearch's SqliteEngine that uses FFI-backed
- * SqlitePDO instead of native PDO.
+ * Drop-in replacement for TNTSearch's SqliteEngine that uses the
+ * package's 3-tier fallback (pdo_sqlite → FFI → CLI) instead of
+ * calling `new PDO('sqlite:...')` directly.
  *
  * Usage in TNTSearch config:
  *   'engine' => \ErDhruvMishra\SqliteFFI\Compat\TntSearchEngine::class,
  */
 class TntSearchEngine extends SqliteEngine
 {
+    /**
+     * Create a PDO-compatible instance using the best available backend.
+     */
+    private function createSqlitePdo(string $path): PDO
+    {
+        return PdoFactory::create($path);
+    }
+
     #[\Override]
     public function createIndex(string $indexName)
     {
@@ -24,8 +33,7 @@ class TntSearchEngine extends SqliteEngine
 
         $this->flushIndex($indexName);
 
-        // FFI-backed PDO instead of native PDO
-        $this->index = new SqlitePDO('sqlite:' . $this->config['storage'] . $indexName);
+        $this->index = $this->createSqlitePdo($this->config['storage'] . $indexName);
         $this->index->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
 
         if ($this->config['wal'] ?? false) {
@@ -104,8 +112,7 @@ class TntSearchEngine extends SqliteEngine
                 1
             );
         }
-        // FFI-backed PDO instead of native PDO
-        $this->index = new SqlitePDO('sqlite:' . $pathToIndex);
+        $this->index = $this->createSqlitePdo($pathToIndex);
         $this->index->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     }
 }
