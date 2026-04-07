@@ -96,9 +96,11 @@ class SqlitePDOStatement extends PDOStatement
         } else {
             $this->captureError();
             if ($this->pdo->getErrMode() === PDO::ERRMODE_EXCEPTION) {
-                $e = new PDOException($this->errorInfo[2] ?? 'SQLite execute error', 0);
+                $e = new PDOException("SQLSTATE[{$this->errorCode}]: " . ($this->errorInfo[2] ?? 'SQLite execute error'), 0);
                 $e->errorInfo = $this->errorInfo;
-                $e->code = $this->errorCode;
+                // PDOException::$code is protected, use reflection to set SQLSTATE
+                $ref = new \ReflectionProperty($e, 'code');
+                $ref->setValue($e, $this->errorCode);
                 throw $e;
             }
             return false;
