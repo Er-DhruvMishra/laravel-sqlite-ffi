@@ -96,7 +96,10 @@ class SqlitePDOStatement extends PDOStatement
         } else {
             $this->captureError();
             if ($this->pdo->getErrMode() === PDO::ERRMODE_EXCEPTION) {
-                throw new PDOException($this->errorInfo[2] ?? 'SQLite execute error');
+                $e = new PDOException($this->errorInfo[2] ?? 'SQLite execute error', 0);
+                $e->errorInfo = $this->errorInfo;
+                $e->code = $this->errorCode;
+                throw $e;
             }
             return false;
         }
@@ -530,8 +533,28 @@ class SqlitePDOStatement extends PDOStatement
         $code = $this->lib->sqlite3_errcode($db);
         $msg  = SqlitePDO::cString($this->lib->sqlite3_errmsg($db));
 
-        $this->errorCode = 'HY000';
-        $this->errorInfo = ['HY000', $code, $msg];
+        $sqlstate = self::sqliteToSqlstate($code);
+        $this->errorCode = $sqlstate;
+        $this->errorInfo = [$sqlstate, $code, $msg];
+    }
+
+    /**
+     * Map SQLite error codes to SQLSTATE codes (matching native PDO behavior).
+     */
+    private static function sqliteToSqlstate(int $sqliteCode): string
+    {
+        // Primary error code (mask off extended bits)
+        $primary = $sqliteCode & 0xFF;
+
+        return match ($primary) {
+            19      => '23000', // SQLITE_CONSTRAINT → integrity constraint violation
+            1       => '42000', // SQLITE_ERROR → syntax error or access rule violation
+            8, 13   => '58000', // SQLITE_READONLY, SQLITE_FULL → system error
+            5, 6    => '40001', // SQLITE_BUSY, SQLITE_LOCKED → serialization failure
+            20      => '22000', // SQLITE_MISMATCH → data exception
+            2       => 'HY000', // SQLITE_INTERNAL
+            default => 'HY000', // General error
+        };
     }
 
     /**
